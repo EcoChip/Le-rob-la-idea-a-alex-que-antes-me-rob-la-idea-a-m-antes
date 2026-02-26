@@ -12,6 +12,7 @@
             --success: #a6e3a1;
             --error: #f38ba8;
             --surface: #313244;
+            --btn-bg: #45475a;
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -24,16 +25,18 @@
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
+            touch-action: manipulation; /* Evita zoom al hacer doble tap en móviles */
         }
         h1 { color: var(--primary); }
         .container {
             background-color: var(--surface);
-            padding: 30px;
+            padding: 20px;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             max-width: 600px;
             width: 100%;
-            margin-top: 20px;
+            margin-top: 10px;
+            box-sizing: border-box;
         }
         button {
             background-color: var(--primary);
@@ -45,34 +48,35 @@
             font-weight: bold;
             border-radius: 8px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.1s;
         }
-        button:hover { transform: scale(1.05); }
+        button:active { transform: scale(0.95); } /* Efecto al presionar en vez de hover para móviles */
         .hidden { display: none !important; }
         
         /* Game Area */
-        .word-display { font-size: 32px; letter-spacing: 5px; margin: 20px 0; font-weight: bold;}
+        .word-display { font-size: 32px; letter-spacing: 5px; margin: 15px 0; font-weight: bold; word-wrap: break-word;}
         .letter-done { color: var(--success); }
         .letter-current { color: var(--primary); text-decoration: underline; }
         .letter-pending { color: #6c7086; }
         
         .input-display {
-            font-size: 40px;
+            font-size: 36px;
             letter-spacing: 8px;
-            min-height: 60px;
-            margin: 20px 0;
+            min-height: 50px;
+            margin: 15px 0;
             font-family: monospace;
             background: rgba(0,0,0,0.2);
             border-radius: 10px;
             padding: 10px;
+            word-wrap: break-word;
         }
         .input-error { color: var(--error); }
-        .hint-box { font-size: 24px; color: var(--success); font-family: monospace; margin-bottom: 20px;}
+        .hint-box { font-size: 20px; color: var(--success); font-family: monospace; margin-bottom: 15px; min-height: 25px;}
         
         /* Dictionary Table */
         .dict-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
             gap: 10px;
             margin-top: 20px;
             max-height: 400px;
@@ -83,8 +87,31 @@
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
+            font-size: 14px;
         }
-        .controls-info { color: #a6adc8; font-size: 14px; margin-top: 20px; }
+        .controls-info { color: #a6adc8; font-size: 14px; margin-top: 15px; }
+
+        /* Teclado Virtual para Móviles */
+        #virtual-keyboard {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .vk-btn {
+            font-size: 28px;
+            padding: 15px 30px;
+            border-radius: 12px;
+            background-color: var(--primary);
+            color: var(--bg-color);
+            min-width: 80px;
+        }
+        .vk-btn-back {
+            background-color: var(--error);
+            color: var(--bg-color);
+            font-size: 20px;
+        }
     </style>
 </head>
 <body>
@@ -115,10 +142,19 @@
             <div class="word-display" id="word-display"></div>
             <div class="hint-box" id="hint-box"></div>
             <div class="input-display" id="input-display"></div>
+            
+            <div id="virtual-keyboard">
+                <button id="btn-0" onclick="processInput('0')" class="vk-btn binary-btn">0</button>
+                <button id="btn-1" onclick="processInput('1')" class="vk-btn binary-btn">1</button>
+                <button id="btn-dot" onclick="processInput('.')" class="vk-btn morse-btn">.</button>
+                <button id="btn-dash" onclick="processInput('-')" class="vk-btn morse-btn">-</button>
+                <button id="btn-back" onclick="processInput('Backspace')" class="vk-btn vk-btn-back">Borrar</button>
+            </div>
+
             <p class="controls-info" id="controls-info"></p>
         </div>
 
-        <button onclick="backToMenu()">Volver al Menú</button>
+        <button onclick="backToMenu()" style="margin-top: 30px; background-color: var(--btn-bg); color: white;">Volver al Menú</button>
     </div>
 
     <script>
@@ -130,7 +166,6 @@
         };
 
         const binaryDict = {};
-        // Generar binario para letras A-Z (Código ASCII)
         for (let i = 65; i <= 90; i++) {
             binaryDict[String.fromCharCode(i)] = '0' + i.toString(2);
         }
@@ -139,8 +174,8 @@
         const letrasPractica = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
         // ESTADO DEL JUEGO
-        let currentSystem = ''; // 'morse' o 'binary'
-        let currentMode = ''; // 'learn' o 'game'
+        let currentSystem = '';
+        let currentMode = '';
         let currentWord = '';
         let currentLetterIndex = 0;
         let currentInput = '';
@@ -185,18 +220,25 @@
 
         function startPractice() {
             document.getElementById('dictionary-view').classList.add('hidden');
-            currentMode = 'practice'; // Sub-modo de aprendizaje
+            currentMode = 'practice';
             startGameplay();
         }
 
         function startGameplay() {
             document.getElementById('play-area').classList.remove('hidden');
             
-            // Configurar controles
+            // Configurar botones y textos según el sistema
+            const morseBtns = document.querySelectorAll('.morse-btn');
+            const binaryBtns = document.querySelectorAll('.binary-btn');
+            
             if (currentSystem === 'morse') {
-                document.getElementById('controls-info').innerText = "Teclas: Punto (.) y Guion (-). Usa Retroceso para borrar.";
+                document.getElementById('controls-info').innerText = "Toca los botones o usa tu teclado: Punto (.) y Guion (-)";
+                morseBtns.forEach(btn => btn.style.display = 'inline-block');
+                binaryBtns.forEach(btn => btn.style.display = 'none');
             } else {
-                document.getElementById('controls-info').innerText = "Teclas: Cero (0) y Uno (1). Usa Retroceso para borrar.";
+                document.getElementById('controls-info').innerText = "Toca los botones o usa tu teclado: Cero (0) y Uno (1)";
+                morseBtns.forEach(btn => btn.style.display = 'none');
+                binaryBtns.forEach(btn => btn.style.display = 'inline-block');
             }
 
             nextWord();
@@ -204,10 +246,8 @@
 
         function nextWord() {
             if (currentMode === 'practice') {
-                // En práctica, damos una letra aleatoria
                 currentWord = letrasPractica[Math.floor(Math.random() * letrasPractica.length)];
             } else {
-                // En juego, damos una palabra completa
                 currentWord = palabrasJuego[Math.floor(Math.random() * palabrasJuego.length)];
             }
             
@@ -217,7 +257,6 @@
         }
 
         function updateUI() {
-            // Renderizar la palabra con colores según el progreso
             let wordHTML = '';
             for (let i = 0; i < currentWord.length; i++) {
                 if (i < currentLetterIndex) {
@@ -230,20 +269,17 @@
             }
             document.getElementById('word-display').innerHTML = wordHTML;
 
-            // Renderizar el input actual
             const inputDisplay = document.getElementById('input-display');
             inputDisplay.innerText = currentInput || '_';
             
             let targetCode = dictionary[currentWord[currentLetterIndex]];
             
-            // Verificar si hay error para pintar de rojo
             if (currentInput.length > 0 && !targetCode.startsWith(currentInput)) {
                 inputDisplay.classList.add('input-error');
             } else {
                 inputDisplay.classList.remove('input-error');
             }
 
-            // Mostrar pista solo en modo práctica
             const hintBox = document.getElementById('hint-box');
             if (currentMode === 'practice') {
                 hintBox.innerText = `Pista: ${targetCode}`;
@@ -252,15 +288,13 @@
             }
         }
 
-        // LÓGICA DEL TECLADO
-        document.addEventListener('keydown', (e) => {
+        // LÓGICA DE ENTRADA (Teclado físico o botones virtuales)
+        function processInput(key) {
             if (!currentSystem || document.getElementById('play-area').classList.contains('hidden')) return;
 
-            let key = e.key;
             let targetCode = dictionary[currentWord[currentLetterIndex]];
-
-            // Manejar teclas según el sistema
             let validKey = false;
+            
             if (currentSystem === 'morse' && (key === '.' || key === '-')) validKey = true;
             if (currentSystem === 'binary' && (key === '0' || key === '1')) validKey = true;
 
@@ -269,29 +303,31 @@
             } else if (key === 'Backspace') {
                 currentInput = currentInput.slice(0, -1);
             } else {
-                return; // Ignorar otras teclas
+                return;
             }
 
-            // Comprobar si completó la letra correctamente
+            // Comprobar si completó la letra
             if (currentInput === targetCode) {
                 currentInput = '';
                 currentLetterIndex++;
                 
-                // Efecto visual rápido para celebrar la letra (opcional, se puede añadir un sonido aquí)
                 document.getElementById('input-display').style.color = 'var(--success)';
                 setTimeout(() => {
                     document.getElementById('input-display').style.color = '';
                 }, 200);
 
                 if (currentLetterIndex >= currentWord.length) {
-                    // ¡Palabra completada!
                     setTimeout(() => {
                         nextWord();
                     }, 400);
                 }
             }
-
             updateUI();
+        }
+
+        // Detectar pulsaciones del teclado físico
+        document.addEventListener('keydown', (e) => {
+            processInput(e.key);
         });
     </script>
 </body>
